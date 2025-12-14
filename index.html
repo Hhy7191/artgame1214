@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>초충도 그림 맞추기 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Inter 폰트 사용 */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+            padding: 20px;
+        }
+
+        /* 메인 퍼즐 보드의 크기 및 배경 설정 */
+        #puzzle-board {
+            aspect-ratio: 1.25 / 1; /* 대략적인 초충도의 비율 */
+            /* 배경 이미지 URL을 사용자가 요청한 주소로 다시 변경 */
+            background-image: url('https://i.postimg.cc/9MqTsDVf/초충도.jpg');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            border: 4px solid #4a90e2;
+            box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+            background-color: #e0e0e0; /* 배경색 추가 (이미지 로딩 전 대비) */
+        }
+
+        /* 카드 드롭 존 스타일: 크기 대폭 감소 및 투명도 유지 */
+        .drop-zone {
+            position: absolute;
+            width: 10%; /* 기존 15%에서 감소 */
+            height: 15%; /* 기존 25%에서 감소 */
+            background-color: rgba(255, 255, 255, 0.05); /* 거의 투명 */
+            border: 2px dashed rgba(255, 255, 255, 0.7); /* 흰색 점선 테두리 */
+            color: white; /* 번호가 배경 그림 위에서 잘 보이도록 */
+            text-shadow: 0 0 5px black, 0 0 5px black; /* 텍스트 가독성 향상 */
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: all 0.2s;
+            overflow: hidden;
+            font-size: 1.2rem; /* 작은 크기에 맞춰 글씨 크기 조정 */
+            font-weight: bold;
+        }
+
+        .drop-zone:hover {
+            background-color: rgba(255, 255, 255, 0.2); /* 호버 시 약간 밝아짐 */
+            border: 2px solid white;
+        }
+
+        .drop-zone.filled {
+            border: none; /* 카드가 채워지면 테두리 제거 */
+        }
+        
+        .drop-zone.filled img {
+            /* 드롭 존이 작아져서 이미지가 전체적으로 작아짐 */
+            object-fit: cover;
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 0 5px rgba(0, 0, 0, 0.5));
+            opacity: 0.95; /* 카드가 원본 그림 위에 올라왔다는 느낌 주기 */
+        }
+
+        /* 카드 선택 영역 스타일 */
+        .card-image {
+            width: 100px;
+            height: 80px;
+            object-fit: cover;
+            border: 3px solid transparent;
+            cursor: pointer;
+            transition: transform 0.1s, border-color 0.2s, box-shadow 0.2s;
+        }
+
+        .card-image:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .card-image.selected {
+            border-color: #d0021b; /* 선택 시 빨간색 테두리 */
+            transform: scale(1.1);
+            box-shadow: 0 8px 16px rgba(208, 2, 27, 0.4);
+        }
+
+        .modal-overlay {
+            z-index: 50;
+            background-color: rgba(0, 0, 0, 0.6);
+        }
+
+        .modal-content {
+            box-shadow: 0 20px 25px rgba(0, 0, 0, 0.3);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+
+    <!-- 전체 컨테이너 크기 확장 (max-w-5xl -> max-w-6xl) -->
+    <div id="game-container" class="w-full max-w-6xl">
+        <h1 class="text-3xl font-bold text-gray-800 text-center mb-6 border-b-2 pb-2 border-blue-400">
+            🎨 신사임당 초충도 그림 맞추기
+        </h1>
+
+        <!-- 게임 메시지 영역 -->
+        <div id="message-box" class="h-10 text-center mb-4 p-2 rounded-lg font-semibold transition-all duration-300">
+            확대 카드를 클릭한 후, 원본 그림의 번호를 눌러 카드를 배치하세요.
+        </div>
+
+        <!-- 메인 퍼즐 보드 (원본 그림) 크기 확장 (max-w-3xl -> max-w-4xl) -->
+        <div id="puzzle-board" class="relative mx-auto w-full max-w-4xl rounded-xl">
+            <!-- 7개의 드롭 존. 요청에 따라 위치 교체됨 -->
+            
+            <!-- 1번 위치 (원래 2번 위치, Top Center/Right Butterfly/Vine) -->
+            <div id="pos-1" class="drop-zone rounded-lg" style="top: 10%; left: 50%;">1</div>
+            
+            <!-- 2번 위치 (원래 1번 위치, Top Left Flower/Moth) -->
+            <div id="pos-2" class="drop-zone rounded-lg" style="top: 15%; left: 10%;">2</div>
+            
+            <!-- 3번 위치 (원래 5번 위치, Bottom Left Corner Grass/Flower) -->
+            <div id="pos-3" class="drop-zone rounded-lg" style="top: 85%; left: 15%;">3</div>
+            
+            <!-- 4번 위치 (변동 없음, Bottom Right Flower/Grass) -->
+            <div id="pos-4" class="drop-zone rounded-lg" style="top: 80%; left: 70%;">4</div>
+            
+            <!-- 5번 위치 (원래 3번 위치, Far Right Large Insect (Mantis/Grasshopper)) -->
+            <div id="pos-5" class="drop-zone rounded-lg" style="top: 50%; left: 80%;">5</div>
+            
+            <!-- 6번 위치 (원래 7번 위치, Upper-Mid Right (smaller insect/flower)) -->
+            <div id="pos-6" class="drop-zone rounded-lg" style="top: 30%; left: 75%;">6</div>
+            
+            <!-- 7번 위치 (원래 6번 위치, Center-Left large Leaf/Insect) -->
+            <div id="pos-7" class="drop-zone rounded-lg" style="top: 40%; left: 25%;">7</div>
+        </div>
+
+        <!-- 확대 카드 영역 -->
+        <h2 class="text-xl font-semibold text-gray-700 mt-8 mb-4">🖼️ 확대 카드 (클릭하여 선택)</h2>
+        <div id="card-selection" class="flex flex-wrap justify-center gap-4 p-4 bg-white rounded-xl shadow-lg">
+            <!-- 카드는 JS로 동적 생성됩니다 -->
+        </div>
+
+        <div class="flex justify-center mt-6">
+            <button id="check-button" class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition duration-300 transform hover:scale-105" disabled>
+                정답 확인하기
+            </button>
+            <button id="reset-button" class="ml-4 bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-8 rounded-full shadow-lg transition duration-300 transform hover:scale-105">
+                다시 시작
+            </button>
+        </div>
+    </div>
+
+    <!-- 모달 (정답/오답 메시지) -->
+    <div id="game-modal" class="fixed inset-0 hidden items-center justify-center modal-overlay">
+        <div class="modal-content bg-white p-8 rounded-xl w-11/12 max-w-md text-center">
+            <h3 id="modal-title" class="text-2xl font-bold mb-4 text-gray-800"></h3>
+            <p id="modal-body" class="mb-6 text-gray-600"></p>
+            <button id="modal-close-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-full transition duration-300">
+                닫기
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 카드 데이터: id는 카드 번호이자 정답 위치(pos-id)와 일치해야 함
+        const CARD_DATA = [
+            { id: 1, url: 'https://i.postimg.cc/KYWB9PXF/1.jpg' },
+            { id: 2, url: 'https://i.postimg.cc/q7Fymsf4/2.jpg' },
+            { id: 3, url: 'https://i.postimg.cc/W4yg9MBQ/3.jpg' },
+            { id: 4, url: 'https://i.postimg.cc/k5HKjQrP/4.jpg' },
+            { id: 5, url: 'https://i.postimg.cc/QMz16QLG/5.jpg' },
+            { id: 6, url: 'https://i.postimg.cc/yNGcfmqq/6.jpg' },
+            { id: 7, url: 'https://i.postimg.cc/6QPnHrsX/7.jpg' },
+        ];
+
+        let gameState = {
+            selectedCardId: null, // 현재 선택된 카드의 ID
+            board: {}, // { 'pos-1': 5, 'pos-2': 3, ... } -> key: positionId, value: cardId
+            allCards: [...CARD_DATA],
+            shuffledCards: [],
+            startTime: null, // 타이머 시작 시간 추가 (밀리초)
+        };
+
+        const elements = {
+            cardSelection: document.getElementById('card-selection'),
+            dropZones: Array.from({ length: 7 }, (_, i) => document.getElementById(`pos-${i + 1}`)),
+            checkButton: document.getElementById('check-button'),
+            resetButton: document.getElementById('reset-button'),
+            messageBox: document.getElementById('message-box'),
+            modal: document.getElementById('game-modal'),
+            modalTitle: document.getElementById('modal-title'),
+            modalBody: document.getElementById('modal-body'),
+            modalCloseButton: document.getElementById('modal-close-button'),
+        };
+
+        // 배열 섞기 함수 (Fisher-Yates)
+        function shuffle(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex !== 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [
+                    array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
+
+        // 게임 상태 초기화 및 시작
+        function initializeGame() {
+            // 상태 초기화
+            gameState.selectedCardId = null;
+            gameState.board = {};
+            gameState.shuffledCards = shuffle([...CARD_DATA]);
+            gameState.startTime = Date.now(); // 게임 시작 시간 기록
+
+            // UI 초기화
+            elements.cardSelection.innerHTML = '';
+            elements.dropZones.forEach(zone => {
+                zone.innerHTML = zone.id.replace('pos-', ''); // 번호 다시 표시
+                zone.classList.remove('filled');
+                zone.style.borderColor = 'rgba(255, 255, 255, 0.7)'; // 초기 테두리 색상
+                // 카드가 채워진 경우 자식 요소를 제거하여 번호만 남김
+                // 첫 번째 자식 요소(번호 텍스트)를 제외한 이미지 요소만 제거
+                const img = zone.querySelector('img');
+                if (img) {
+                    zone.removeChild(img);
+                }
+            });
+            elements.checkButton.disabled = true;
+            updateMessage('확대 카드를 클릭한 후, 원본 그림의 번호를 눌러 카드를 배치하세요.');
+
+            renderCards();
+            setupEventListeners();
+        }
+
+        // 카드 선택 영역 렌더링
+        function renderCards() {
+            // 이미 이전에 생성된 카드가 있다면 제거하고 다시 생성
+            elements.cardSelection.innerHTML = ''; 
+
+            gameState.shuffledCards.forEach(card => {
+                const img = document.createElement('img');
+                img.src = card.url;
+                // 이미지 로드 실패 시 대체 텍스트 표시
+                img.onerror = () => { img.src = 'https://placehold.co/100x80/cccccc/333333?text=Load+Error'; };
+                img.dataset.cardId = card.id;
+                img.classList.add('card-image', 'rounded-md');
+
+                // 카드를 클릭하면 선택됨
+                img.addEventListener('click', () => handleCardSelection(card.id));
+                
+                // 카드 컨테이너
+                const cardWrapper = document.createElement('div');
+                cardWrapper.classList.add('p-1', 'bg-white', 'rounded-lg', 'shadow-sm', 'border');
+                cardWrapper.appendChild(img);
+                cardWrapper.dataset.cardId = card.id;
+                
+                elements.cardSelection.appendChild(cardWrapper);
+            });
+        }
+
+        // 카드 선택 핸들러
+        function handleCardSelection(cardId) {
+            // 이전에 선택된 카드 스타일 제거
+            document.querySelectorAll('.card-image').forEach(img => {
+                img.classList.remove('selected');
+            });
+            
+            // 새 카드 선택 및 스타일 적용
+            const selectedCardWrapper = document.querySelector(`#card-selection div[data-card-id="${cardId}"]`);
+            const selectedImg = selectedCardWrapper ? selectedCardWrapper.querySelector('img') : null;
+
+            if (selectedImg) {
+                selectedImg.classList.add('selected');
+                gameState.selectedCardId = cardId;
+                updateMessage(`카드 ${cardId}번이 선택되었습니다. 배치할 위치(번호)를 클릭하세요.`, 'bg-yellow-100 text-yellow-800');
+            }
+        }
+
+        // 드롭 존 클릭 핸들러
+        function handleDropZoneClick(event) {
+            const dropZone = event.currentTarget;
+            const positionId = dropZone.id; // 'pos-1', 'pos-2', ...
+            
+            if (gameState.selectedCardId === null) {
+                updateMessage('먼저 아래의 확대 카드 중 하나를 클릭하여 선택하세요.', 'bg-red-200 text-red-800');
+                return;
+            }
+
+            const cardIdToPlace = gameState.selectedCardId;
+            const cardData = CARD_DATA.find(c => c.id === cardIdToPlace);
+
+            // 1. 이미 다른 카드가 배치된 위치라면? -> 기존 카드를 카드 선택 영역으로 되돌리기
+            const existingCardId = gameState.board[positionId];
+            if (existingCardId) {
+                const oldCardWrapper = document.querySelector(`#card-selection div[data-card-id="${existingCardId}"]`);
+                if (oldCardWrapper) {
+                    oldCardWrapper.style.display = 'block';
+                }
+            }
+
+            // 2. 새로운 카드 배치
+            gameState.board[positionId] = cardIdToPlace;
+            
+            // UI 업데이트: 드롭 존에 이미지 표시
+            let placedImg = dropZone.querySelector('img');
+            if (!placedImg) {
+                placedImg = document.createElement('img');
+                // 번호 텍스트(첫 번째 자식) 다음에 이미지 추가
+                dropZone.appendChild(placedImg); 
+            }
+            
+            placedImg.src = cardData.url;
+            placedImg.alt = `Card ${cardIdToPlace}`;
+            dropZone.classList.add('filled');
+
+            // UI 업데이트: 카드 선택 영역에서 현재 배치한 카드 숨기기
+            const selectedCardWrapper = document.querySelector(`#card-selection div[data-card-id="${cardIdToPlace}"]`);
+            if (selectedCardWrapper) {
+                selectedCardWrapper.style.display = 'none';
+            }
+
+            // 3. 현재 선택된 카드 해제 및 스타일 초기화
+            document.querySelector(`.card-image[data-card-id="${cardIdToPlace}"]`)?.classList.remove('selected');
+            gameState.selectedCardId = null;
+
+            // 4. 메시지 및 버튼 상태 업데이트
+            updateMessage(`카드 ${cardIdToPlace}번이 위치 ${positionId.replace('pos-', '')}에 배치되었습니다. 다음 카드를 선택하세요.`);
+            checkIfGameReady();
+        }
+        
+        // 게임 준비 상태 확인 (7개 모두 채워졌는지)
+        function checkIfGameReady() {
+            const placedCount = Object.keys(gameState.board).length;
+            if (placedCount === 7) {
+                elements.checkButton.disabled = false;
+                updateMessage('모든 카드가 배치되었습니다. 정답을 확인하세요!', 'bg-green-100 text-green-800');
+            } else {
+                elements.checkButton.disabled = true;
+            }
+        }
+
+        // 정답 확인 로직
+        function checkAnswer() {
+            let correctCount = 0;
+            let isCorrect = true;
+
+            for (let i = 1; i <= 7; i++) {
+                const positionId = `pos-${i}`;
+                const dropZone = document.getElementById(positionId);
+                const placedCardId = gameState.board[positionId];
+                const requiredCardId = i; // 위치 1에는 카드 1, 위치 2에는 카드 2가 정답
+
+                if (placedCardId === requiredCardId) {
+                    correctCount++;
+                    // 정답인 경우 테두리 색상 변경
+                    dropZone.style.borderColor = '#10b981'; // 에메랄드 그린
+                } else {
+                    isCorrect = false;
+                    // 오답인 경우 테두리 색상 변경
+                    dropZone.style.borderColor = '#ef4444'; // 레드
+                }
+            }
+
+            if (isCorrect) {
+                // 시간 측정 및 표시
+                const timeTakenMs = Date.now() - gameState.startTime;
+                const totalSeconds = Math.floor(timeTakenMs / 1000);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                const timeString = `${minutes}분 ${seconds}초`;
+
+                const successMessage = `신사임당의 초충도 퍼즐을 완벽하게 맞추셨습니다! \n\n✨ 소요 시간: ${timeString} \n\n다시 플레이하려면 "다시 시작" 버튼을 눌러주세요.`;
+                
+                showModal('🎉 성공! 대단해요!', successMessage, 'bg-green-500');
+                updateMessage(`정답입니다! (소요 시간: ${timeString}) 다시 플레이하려면 "다시 시작" 버튼을 누르세요.`, 'bg-green-200 text-green-800');
+                elements.checkButton.disabled = true;
+            } else {
+                showModal('😢 아쉽네요', `총 7개 중 ${correctCount}개를 맞추셨습니다. 틀린 위치의 카드를 확인하고 다시 시도해 보세요!`, 'bg-red-500');
+                updateMessage('오답입니다. 틀린 위치의 카드를 교체해 보세요.', 'bg-red-200 text-red-800');
+            }
+        }
+
+        // 이벤트 리스너 설정
+        function setupEventListeners() {
+            elements.dropZones.forEach(zone => {
+                zone.onclick = handleDropZoneClick;
+            });
+
+            elements.checkButton.onclick = checkAnswer;
+            elements.resetButton.onclick = initializeGame;
+            elements.modalCloseButton.onclick = () => elements.modal.classList.add('hidden');
+        }
+        
+        // 메시지 박스 업데이트
+        function updateMessage(text, className = 'bg-blue-100 text-blue-800') {
+            elements.messageBox.className = `h-10 text-center mb-4 p-2 rounded-lg font-semibold transition-all duration-300 ${className}`;
+            elements.messageBox.textContent = text;
+        }
+
+        // 커스텀 모달 표시 (alert() 대신 사용)
+        function showModal(title, body, headerColor) {
+            elements.modalTitle.textContent = title;
+            elements.modalBody.textContent = body;
+            elements.modalTitle.className = `text-2xl font-bold mb-4 ${headerColor === 'bg-green-500' ? 'text-green-700' : 'text-red-700'}`;
+            elements.modal.classList.remove('hidden');
+            elements.modal.classList.add('flex');
+        }
+
+        // 페이지 로드 시 게임 시작
+        window.onload = initializeGame;
+    </script>
+</body>
+</html>
